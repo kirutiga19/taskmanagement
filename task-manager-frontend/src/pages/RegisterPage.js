@@ -21,8 +21,10 @@ function RegisterPage() {
       alert('Registration successful. Please login.');
       navigate('/login');
     } catch (err) {
-      alert('Registration failed');
-    }
+  console.log(err.response);
+  alert(JSON.stringify(err.response?.data));
+}
+
   };
 
   return (

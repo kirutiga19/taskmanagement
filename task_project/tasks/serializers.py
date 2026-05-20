@@ -2,14 +2,30 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Task
 
-# Task Serializer
+
+# -----------------------
+# USER SERIALIZER
+# -----------------------
+class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'password']
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password']
+        )
+        return user
+
+
+# -----------------------
+# TASK SERIALIZER
+# -----------------------
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
-        fields = ['id', 'title', 'description', 'status', 'priority', 'assignee']
-
-# User Serializer
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'username', 'email', 'is_staff']
+        fields = '__all__'

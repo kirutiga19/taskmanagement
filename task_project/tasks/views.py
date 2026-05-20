@@ -1,91 +1,80 @@
-from django.contrib.auth import authenticate
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
-from rest_framework import status
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+
 from .models import Task
 from .serializers import TaskSerializer, UserSerializer
-from django.contrib.auth.models import User
-from django.utils.timezone import now
-from .models import UserActivity
-from rest_framework.permissions import IsAdminUser
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
 
+
+# ----------------------------------
+# REGISTER USER
+# ----------------------------------
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def register(request):
     serializer = UserSerializer(data=request.data)
+
     if serializer.is_valid():
-        serializer.save()
-        return Response({'message': 'User registered successfully'})
+        user = serializer.save()
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            "message": "User registered successfully",
+            "token": token.key
+        }, status=201)
+
     return Response(serializer.errors, status=400)
 
-@csrf_exempt
-def login_view(request):
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-        username = data.get('username')
-        password = data.get('password')
 
-        user = authenticate(username=username, password=password)
-        if user is not None:
-            token, _ = Token.objects.get_or_create(user=user)
-            return JsonResponse({
-                'token': token.key,
-                'is_admin': user.is_superuser  # or user.is_staff
-            })
-        else:
-            return JsonResponse({'error': 'Invalid credentials'}, status=401)
-
-    return JsonResponse({'error': 'Invalid request'}, status=400)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def my_tasks(request):
-    user = request.user
-    tasks = Task.objects.filter(assignee=user)
-    serializer = TaskSerializer(tasks, many=True)
-    return Response({"username": user.username, "tasks": serializer.data})
-
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def update_task_status(request, pk):
-    task = Task.objects.get(id=pk, assignee=request.user)
-    new_status = request.data.get('status')
-    task.status = new_status
-    task.save()
-    return Response({"message": "Task status updated"})
-
+# ----------------------------------
+# LOGIN USER
+# ----------------------------------
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def login_view(request):
     username = request.data.get('username')
     password = request.data.get('password')
+
     user = authenticate(username=username, password=password)
 
-    if user:
-        token, _ = Token.objects.get_or_create(user=user)
+    if user is not None:
+        token, created = Token.objects.get_or_create(user=user)
         return Response({
-            'token': token.key,
-            'is_admin': user.is_staff  
+            "message": "Login successful",
+            "token": token.key
         })
-    return Response({'error': 'Invalid Credentials'}, status=400)
+    else:
+        return Response({
+            "error": "Invalid credentials"
+        }, status=400)
 
 
+# ----------------------------------
+# GET LOGGED-IN USER TASKS
+# ----------------------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def admin_dashboard_data(request):
-    if not request.user.is_staff:
-        return Response({'detail': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+def my_tasks(request):
+    tasks = Task.objects.filter(user=request.user)
+    serializer = TaskSerializer(tasks, many=True)
+    return Response(serializer.data)
 
-    tasks = Task.objects.all()
-    serialized_tasks = TaskSerializer(tasks, many=True)
-    users = User.objects.all()
-    serialized_users = UserSerializer(users, many=True)
 
-    return Response({
-        'tasks': serialized_tasks.data,
-        'users': serialized_users.data,
-        'admin': request.user.username
-    })
+# ----------------------------------
+# UPDATE TASK STATUS
+# ----------------------------------
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_task_status(request, task_id):
+    try:
+        task = Task.objects.get(id=task_id, user=request.user)
+    except Task.DoesNotExist:
+        return Response({"error": "Task not found"}, status=404)
+
+    task.status = request.data.get('status', task.status)
+    task.save()
+
+    serializer = TaskSerializer(task)
+    return Response(serializer.data)
